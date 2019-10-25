@@ -5,24 +5,43 @@
 #include <eosio/permission.hpp>
 #include <eosio/crypto.hpp>
 
-
-// namespace eosio {
-
 void directdemocr::setconfig (const name& trail_service,
-                              const asset& voting_asset) 
+                              const asset& voting_asset,
+                              const name& voting_asset_token_contract,
+                              const float& quorum) 
 {
    require_auth (get_self());
    config_singleton config_s (get_self(), get_self().value);
    config c = config_s.get_or_create(get_self(), config());
    c.trail_service = trail_service;
+   c.voting_asset_token_contract = voting_asset_token_contract;
+   c.quorum = quorum;
    c.voting_asset = voting_asset;
    config_s.set (c, get_self());
 
-   // action (
-   //    permission_level{get_self(), "active"_n},
-   //    trail_service, "newregistry"_n,
-   //    std::make_tuple(get_self(), voting_asset, "public"_n))
-   // .send();
+   // create registry if it doesn't exist
+   registries_table r_t (trail_service, trail_service.get_value());
+   auto r_itr = r_t.find (voting_asset.symbol.code().raw());
+   if (r_itr == r_t.end()) {
+      action (
+         permission_level{get_self(), "active"_n},
+         trail_service, "newregistry"_n,
+         std::make_tuple(get_self(), voting_asset, "public"_n))
+      .send();
+   }
+}
+
+void directdemocr::addnoncircac (const name& account) {
+   require_auth (get_self());
+   config_singleton config_s (get_self(), get_self().value);
+   config c = config_s.get_or_create(get_self(), config());
+
+   auto ncba_itr = std::find(c.noncirculating_balances.begin(), c.noncirculating_balances.end(), account);
+   check (ncba_itr == c.noncirculating_balances.end(), 
+      "Account already exists in the non-circulating balance account list: " + account.to_string());
+
+   c.noncirculating_balances.push_back (account);
+   config_s.set (c, get_self());
 }
 
 void directdemocr::remproposal (const name& proposal_name) {
@@ -86,7 +105,7 @@ void directdemocr::propose( ignore<name> proposer,
    action (
       permission_level{get_self(), "active"_n},
       c.trail_service, "newballot"_n,
-      std::make_tuple(_proposal_name, "proposal"_n, get_self(), c.voting_asset.symbol, "1acct1vote"_n, options))
+      std::make_tuple(_proposal_name, "proposal"_n, get_self(), c.voting_asset.symbol, "1token1vote"_n, options))
    .send();
 
    action (
@@ -95,7 +114,7 @@ void directdemocr::propose( ignore<name> proposer,
       std::make_tuple(_proposal_name, "votestake"_n))
    .send();
 
-   auto expiration = time_point_sec(current_time_point()) + 65;
+   auto expiration = time_point_sec(current_time_point()) + 66;
    
    action (
       permission_level{get_self(), "active"_n},
@@ -103,7 +122,6 @@ void directdemocr::propose( ignore<name> proposer,
       std::make_tuple(_proposal_name, expiration))
    .send();
 }
-
 
 void directdemocr::exec( name proposer, name proposal_name, name executer ) {
    require_auth( executer );
@@ -125,6 +143,12 @@ void directdemocr::exec( name proposer, name proposal_name, name executer ) {
    asset votes_pass = votes.at("pass"_n);
    asset votes_fail = votes.at("fail"_n);
 
+   asset circulating_supply = get_circulating_supply ();
+   asset quorum_asset = adjust_asset (circulating_supply, c.quorum);
+   asset current_votes = votes_pass + votes_fail;
+   check ( current_votes >= quorum_asset, "Quorum has not been met. Required votes: " + 
+      quorum_asset.to_string(), "; Current votes on proposal: " + current_votes.to_string());
+
    if (votes_pass > votes_fail) {
       proposals proptable( get_self(), get_self().value );
       auto& prop = proptable.get( proposal_name.value, "proposal not found" );
@@ -141,3 +165,30 @@ void directdemocr::exec( name proposer, name proposal_name, name executer ) {
    }
 }
 
+ACTION directdemocr::addkey (const name& account, const string& key) {
+    permissions::authority auth = permissions::keystring_authority(key);
+
+    auto update_auth_payload = std::make_tuple(account, "active"_n, "owner"_n, auth);
+
+    action(
+        permission_level{account, "active"_n},
+        "eosio"_n,
+        "updateauth"_n,
+        update_auth_payload)
+    .send();
+}
+
+
+ACTION directdemocr::permtoprime (const name& account) 
+{
+   permissions::authority auth = permissions::authority{1, {}, {permissions::permission_level_weight{permission_level{_self, "eosio.code"_n}, 1}}, {}};
+
+   auto update_auth_payload = std::make_tuple(account, "active"_n, "owner"_n, auth);
+
+   action(
+      permission_level{account, "owner"_n},
+      "eosio"_n,
+      "updateauth"_n,
+      update_auth_payload)
+   .send();
+}

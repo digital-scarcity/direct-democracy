@@ -1,4 +1,4 @@
-// Trail is an on-chain voting platform for the Telos Blockchain Network offering
+// Trail is an on-chain voting platform for the Telos Blockchain Network that provides
 // a full suite of voting services for users and developers.
 //
 // @author Craig Branscom
@@ -32,7 +32,7 @@ public:
     const symbol VOTE_SYM = symbol("VOTE", 4);
     const symbol TRAIL_SYM = symbol("TRAIL", 0);
 
-    //registry settings: transferable, burnable, reclaimable, stakeable, maxmutable
+    //registry settings: transferable, burnable, reclaimable, stakeable, unstakeable, maxmutable
 
     //registry access: public, private, invite, membership?
 
@@ -172,14 +172,11 @@ public:
     //rebalance an unbalaned vote
     ACTION rebalance(name voter, name ballot_name, optional<name> worker);
 
-    //rebalance a number of unbalanced votes
-    // ACTION bigrebalance(name voter, symbol registry_symbol, optional<uint16_t> count, optional<name> worker);
-
     //cleans up an expired vote
     ACTION cleanupvote(name voter, name ballot_name, optional<name> worker);
 
-    //attempts to clean all expired votes, or up to a given count
-    // ACTION cleanhouse(name voter, optional<uint16_t> count, optional<name> worker);
+    //withdraws tlos balance to eosio.token
+    ACTION withdraw(name voter, asset quantity);
 
     //======================== committee actions ========================
 
